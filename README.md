@@ -41,8 +41,8 @@ What this fork adds:
 - **`um publish check`** also checks that the models in a `comfy_manifest.jsonl` are credited in the README.
 - Blender is found on any Windows drive; small shared helpers (`um/common.py`).
 
-`um fal` and the fal MCP config are still here, unchanged and optional: set `FAL_KEY` to use them, ignore them
-otherwise. Nothing in this fork needs a cloud account. Examples under `examples/` were built upstream with fal
+`um fal` is still here, unchanged and optional: set `FAL_KEY` to use it, ignore it otherwise. The fal MCP server is
+no longer configured by default (add it by hand if you want it: see the fal-assets skill). Nothing in this fork needs a cloud account. Examples under `examples/` were built upstream with fal
 and are kept as they were; each recipe they used has a `um comfy` equivalent (the output looks different, because
 the models are different).
 
@@ -51,7 +51,7 @@ To pull in upstream changes: `git remote add upstream https://github.com/rehan-r
 
 ## Install
 
-Pick your agent. Each gets the same skills (Agent Skills format), the `um` CLI and, optionally, the fal MCP server.
+Pick your agent. Each gets the same skills (Agent Skills format), and the `um` CLI.
 
 | Agent | Install |
 |---|---|
@@ -59,14 +59,13 @@ Pick your agent. Each gets the same skills (Agent Skills format), the `um` CLI a
 | **Codex** | `codex plugin marketplace add micrus24/universal-modder`, then `codex plugin add universal-modder@universal-modder` |
 | **Gemini CLI** | `gemini extensions install https://github.com/micrus24/universal-modder` |
 | **VS Code / Copilot** | Enable `chat.plugins.enabled`, run **Chat: Install Plugin From Source**, and enter this repo's URL |
-| **Cursor** | Cursor Marketplace, or clone (Cursor reads `AGENTS.md` and `.cursor/mcp.json`) |
+| **Cursor** | Cursor Marketplace, or clone (Cursor reads `AGENTS.md`) |
 | **Skills only** (any agent) | `npx skills add https://github.com/micrus24/universal-modder` |
 | **Anything else** | `git clone https://github.com/micrus24/universal-modder` and start your agent inside it |
 
 Inside a clone, each agent finds the skills where it looks for them: `.agents/skills` (Codex and friends),
 `.claude/skills`, `.gemini/skills` and `.github/skills` all link to `skills/`. Instructions are in
-`AGENTS.md`, which `CLAUDE.md` and `GEMINI.md` point to. MCP config is in `.mcp.json`, `.codex/config.toml`,
-`.cursor/mcp.json` and `.vscode/mcp.json`.
+`AGENTS.md`, which `CLAUDE.md` and `GEMINI.md` point to.
 
 **The `um` CLI.** Plugin installs and clones put it on PATH. Anywhere else:
 ```bash
@@ -77,7 +76,7 @@ account). `um comfy check` lists which models each recipe still needs, and the
 [comfy-assets skill](skills/comfy-assets/SKILL.md) has the downloads that were tested (an SDXL checkpoint is
 enough to start with sprites, textures and concept art). Rigging needs [Blender](https://www.blender.org).
 
-*Optional cloud route:* a [fal API key](https://fal.ai/dashboard/keys) enables `um fal` and the fal MCP server:
+*Optional cloud route:* a [fal API key](https://fal.ai/dashboard/keys) enables `um fal` (and the hosted fal MCP server, if you add it yourself):
 ```bash
 export FAL_KEY=...
 ```

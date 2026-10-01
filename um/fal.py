@@ -74,7 +74,7 @@ SPRITE_STYLE = ("a single game sprite, the whole subject in frame and centered, 
 def fal_key() -> str:
     k = os.environ.get("FAL_KEY")
     if not k and os.environ.get("FAL_KEY_FILE"):
-        k = Path(os.environ["FAL_KEY_FILE"]).expanduser().read_text().strip()
+        k = Path(os.environ["FAL_KEY_FILE"]).expanduser().read_text(encoding="utf-8").strip()
     k = k or dotenv_value("FAL_KEY")
     if not k:
         die("FAL_KEY is not set. Create a key at https://fal.ai/dashboard/keys and `export FAL_KEY=...` "
@@ -236,7 +236,7 @@ def generate(endpoint: str, inp: dict, out: str | Path, name: str, quiet=False) 
     rec = dict(t=time.strftime("%Y-%m-%dT%H:%M:%S"), endpoint=endpoint, name=name, request_id=res.get("_request_id"),
                seed=res.get("seed"), files=files,
                input={k: (v[:120] + "..." if isinstance(v, str) and v.startswith("data:") else v) for k, v in inp.items()})
-    with open(out / "fal_manifest.jsonl", "a") as f:
+    with open(out / "fal_manifest.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps(rec) + "\n")
     for p in files:
         print(p)

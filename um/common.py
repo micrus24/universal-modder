@@ -59,7 +59,7 @@ def dotenv_value(key: str) -> str | None:
     import re
     for env in (Path.cwd() / ".env", Path(__file__).resolve().parents[1] / ".env"):
         if env.exists():
-            m = re.search(rf"^\s*{re.escape(key)}\s*=\s*['\"]?([^'\"\s]+)", env.read_text(), re.M)
+            m = re.search(rf"^\s*{re.escape(key)}\s*=\s*['\"]?([^'\"\s]+)", env.read_text(encoding="utf-8", errors="replace"), re.M)
             if m:
                 return m.group(1)
     return None

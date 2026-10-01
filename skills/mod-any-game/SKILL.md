@@ -28,7 +28,7 @@ Otherwise install it once for any agent: `uv tool install git+https://github.com
 | What games are installed, what engine, what anti-cheat, where saves live | `um scan --list`, `um scan "<game>"` |
 | Sprites, textures, PBR, 3D models, SFX, music, voice, video, locally on the user's GPU (ComfyUI, no key) | `um comfy <recipe>` (comfy-assets skill; `um comfy check` first) |
 | Rig a humanoid model (Blender Rigify) | `um rig model.glb out.glb --preview check.png` |
-| The same assets from the cloud (optional, needs `FAL_KEY`) | `um fal <recipe>`, or the fal MCP (`search_models`, `run_model`) |
+| The same assets from the cloud (optional, needs `FAL_KEY`) | `um fal <recipe>` (or the fal MCP, if the user added it) |
 | Cut out / fit / pixelate / pack sprites; 3D model → sprite frames | `um sprite ...`, `um render3d ...` |
 | Launch, screenshot, click/type, record a Windows game (also from WSL) | `um win ...` |
 | Snapshot saves before touching them; undo | `um backup create/diff/restore` |

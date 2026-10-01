@@ -11,6 +11,9 @@ GROUPS = ["scan", "fal", "comfy", "sprite", "render3d", "rig", "video", "win", "
 
 
 def main(argv=None):
+    for stream in (sys.stdout, sys.stderr):     # a legacy console code page (cp1250...) must not crash on "→" or "·"
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     ap = argparse.ArgumentParser(prog="um", description=DOC, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--version", action="version", version=f"universal-modder {__version__}")
     sub = ap.add_subparsers(dest="group", metavar="<group>")

@@ -141,7 +141,7 @@ def test_cutout_keeps_interior_white():
 def test_fit_and_hard_alpha():
     f = sprite.fit(sprite.cutout(sprite_on_white()), 10, 10, anchor="bottom")
     assert f.size == (10, 10) and f.getbbox()[3] == 10
-    assert set(sprite.hard_alpha(f).getchannel("A").getdata()) <= {0, 255}
+    assert set(sprite.hard_alpha(f).getchannel("A").tobytes()) <= {0, 255}
 
 
 def test_sheet_slice_roundtrip():
@@ -224,7 +224,7 @@ def test_repo_knowledge_is_valid():
         fails, _ = kb.check_note(p, root)
         assert not fails, (p, fails)
     idx, rows = kb.build_index(root)
-    assert (root / "INDEX.md").read_text() == idx, "run `um kb index`"
+    assert (root / "INDEX.md").read_text(encoding="utf-8") == idx, "run `um kb index`"
     assert len(rows) >= 7
 
 
@@ -236,13 +236,13 @@ def test_kb_new_check_search(tmp_path):
     p = kb.new_note(root, "Hades II", "A new boon god", agent="Codex (gpt-6)", route="loader-api")
     fails, _ = kb.check_note(p, root)
     assert any("unfilled template text" in f for f in fails)          # a fresh scaffold must not pass
-    good = p.read_text()
+    good = p.read_text(encoding="utf-8")
     good = good.replace("FILL IN: exact build", "1.0.1 (Steam)").replace("anti_cheat: FILL IN", "anti_cheat: none")
     good = good.replace("> Two to four sentences: what you built", "> Added a boon god via a Lua mod loader")
     good = good.replace("The most valuable section. Numbered; each one symptom → cause → fix.", "")
     good = good.replace("1. **Symptom.** What you saw. **Cause:** what it really was. **Fix:** what worked.",
                         "1. **Boons never offered.** **Cause:** pool cached at load. **Fix:** register before the run starts.")
-    p.write_text(good)
+    p.write_text(good, encoding="utf-8")
     fails, _ = kb.check_note(p, root)
     assert not fails, fails
     res = kb.search(root, ["boon"])

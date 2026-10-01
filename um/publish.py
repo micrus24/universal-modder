@@ -72,7 +72,7 @@ def credit_keys(name: str, engine: bool = False) -> list[str]:
 def _manifest_names(path: Path, warns: list[str], root: Path) -> list[tuple[str, bool]]:
     """(name, is_engine) for every model / engine recorded in a comfy_manifest.jsonl; unreadable lines are reported."""
     found = []
-    for n, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
+    for n, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
         if not line.strip():
             continue
         try:
@@ -80,7 +80,7 @@ def _manifest_names(path: Path, warns: list[str], root: Path) -> list[tuple[str,
             if not isinstance(rec, dict):
                 raise ValueError("not an object")
         except ValueError:
-            warns.append(f"{path.relative_to(root)} line {n} is not valid JSON, skipped")
+            warns.append(f"{path.relative_to(root).as_posix()} line {n} is not valid JSON, skipped")
             continue
         found += [(x, False) for x in rec.get("models") or [] if isinstance(x, str)]
         found += [(x, True) for x in rec.get("engines") or [] if isinstance(x, str)]
@@ -110,17 +110,17 @@ def check(mod: str, game: str | None = None) -> int:
             h = _sha1(f)
             for gp in by_size[sz]:
                 if _sha1(gp) == h:
-                    fails.append(f"game file copied verbatim: {f.relative_to(root)}  (== {gp.relative_to(g)})")
+                    fails.append(f"game file copied verbatim: {f.relative_to(root).as_posix()}  (== {gp.relative_to(g).as_posix()})")
                     break
     for f in files:
-        rel = f.relative_to(root)
+        rel = f.relative_to(root).as_posix()
         if f.name == ".env" or f.name.endswith(".env"):
             fails.append(f"env file (secrets?): {rel}")
         if f.suffix.lower() in ARCHIVE_EXT and f.stat().st_size > 5 << 20:
             warns.append(f"large engine archive ({f.stat().st_size >> 20} MB): {rel} - make sure it holds only your own assets")
         if f.suffix.lower() in TEXT_EXT or f.name in (".env",):
             try:
-                txt = f.read_text(errors="replace")
+                txt = f.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
             for label, rx in SECRET_PATTERNS:
@@ -136,7 +136,7 @@ def check(mod: str, game: str | None = None) -> int:
     if not any(n.startswith("readme") for n in names):
         warns.append("no README (install steps, requirements, credits)")
     readmes = [f for f in files if f.name.lower().startswith(("readme", "credits"))]
-    credits = " ".join(f.read_text(errors="replace").lower() for f in readmes)
+    credits = " ".join(f.read_text(encoding="utf-8", errors="replace").lower() for f in readmes)
     squashed = _squash(credits)
     if any(f.name == "fal_manifest.jsonl" for f in files) and "fal" not in credits:
         warns.append("fal-generated assets (fal_manifest.jsonl) but no credit line in README/CREDITS")
@@ -144,7 +144,7 @@ def check(mod: str, game: str | None = None) -> int:
         used = dict.fromkeys(_manifest_names(m, warns, root))
         uncredited = sorted(x for x, engine in used if not any(k in squashed for k in credit_keys(x, engine)))
         if uncredited:
-            warns.append(f"ComfyUI-generated assets ({m.relative_to(root)}): credit the models in README/CREDITS "
+            warns.append(f"ComfyUI-generated assets ({m.relative_to(root).as_posix()}): credit the models in README/CREDITS "
                          f"and check their licenses: {', '.join(uncredited)}")
     for x in fails:
         print("FAIL ", x)

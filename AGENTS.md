@@ -5,8 +5,8 @@ CLI, GitHub Copilot, OpenCode and anything else that reads `AGENTS.md`. When som
 repo, they almost always want to **mod a game**, or to learn how a game was modded.
 
 > **This is a local-first fork** of rehan-remade/universal-modder. Generate assets with `um comfy` (your own ComfyUI,
-> no API key) and rig humanoids with `um rig` (Blender). `um fal` and the fal MCP server are optional leftovers from
-> upstream and need `FAL_KEY`; don't ask the user for one unless they want the cloud route. Never open pull requests
+> no API key) and rig humanoids with `um rig` (Blender). `um fal` is an optional leftover from
+> upstream and needs `FAL_KEY`; don't ask the user for one unless they want the cloud route. Never open pull requests
 > against upstream: `um kb pr` targets this fork.
 
 ## Start here
@@ -32,11 +32,8 @@ repo, they almost always want to **mod a game**, or to learn how a game was modd
     - `backup`: snapshot and restore saves
     - `publish`: pre-release lint
     - `kb`: the knowledge base
-- **fal MCP server (optional, cloud):** `https://mcp.fal.ai/mcp` with header `Authorization: Bearer $FAL_KEY`.
-  - It's pre-configured per agent: `.mcp.json` (Claude Code), `.codex/config.toml` (Codex),
-    `.cursor/mcp.json` (Cursor), `.vscode/mcp.json` (VS Code / Copilot), `gemini-extension.json`
-    (Gemini CLI).
-  - No MCP? `um fal` does the same over REST. Neither is needed with `um comfy`.
+- **fal MCP server:** not configured in this fork. `um fal` does the same over REST (needs `FAL_KEY`); neither is
+  needed with `um comfy`. To add fal's hosted MCP by hand, see `skills/fal-assets/SKILL.md`.
 - **Skills** (`skills/*/SKILL.md`, Agent Skills format) are also linked where each agent looks for them:
   `.agents/skills` (Codex and others), `.claude/skills`, `.gemini/skills`, `.github/skills`.
 - **Engine playbooks:** `skills/mod-any-game/references/engines/`.
