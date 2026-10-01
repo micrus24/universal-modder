@@ -67,6 +67,21 @@ Presets:
 - Then pack with `um sprite sheet`, or with an engine writer (e.g. `examples/aoe2-de-civ/sld.py`).
 - Needs Blender (`blender` on PATH or `BLENDER=...`). Cycles uses the GPU when available.
 - Dark generated textures: raise `--sun` / `--ambient`, or brighten in post.
+
+## 3b. Rigging a humanoid (`um rig`)
+For a standing humanoid mesh that a 3D engine will animate (not for sprites):
+`um rig knight.glb knight_rigged.glb --preview check.png [--anims idle,walk] [--faces 20000] [--yaw 180]`.
+It fits Blender's Rigify human metarig to the mesh, generates the control rig, binds the mesh with automatic
+weights and exports a GLB with deform bones, skin weights and optional idle / walk loops.
+- **Always open the preview.** Red lines are the deform bones over the mesh; they should sit inside the limbs,
+  head and torso. A figure facing away needs `--yaw 180`; arms that hang get swung down automatically
+  (`--arm-angle` overrides, `--no-fit-width` for hanging arms you want left alone).
+- **Image-to-3D meshes are dense and often open.** `um rig` decimates, and voxel-remeshes when collapse stalls
+  (this drops UVs; textured meshes are only decimated). `--faces 0` keeps the mesh untouched.
+- **What it won't do:** quadrupeds, wings, capes, extra limbs, or a pose far from T/A (sitting, crouching). Fix
+  the metarig by hand in Blender (Edit Mode), then Generate Rig. The built-in loops are sine-wave placeholders.
+- The rigged GLB goes to the engine's importer, or back through `um render3d` for sprites (the animation names
+  `idle` / `walk` can drive its `--anims`).
 - For game-ready 3D (not sprites), remesh with `um fal run tripo3d/tripo/remesh mesh_url=@unit.glb face_limit:=8000`, then convert in Blender
   (GLB → FBX/OBJ) with the engine's scale and axis convention: Unity Y-up metres, Unreal Z-up
   centimetres, Bethesda NIF via PyNifly.

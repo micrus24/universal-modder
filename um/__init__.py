@@ -3,8 +3,10 @@
 Subcommands (see `um --help`):
   scan      find installed games and fingerprint one: engine, runtime, anti-cheat, mod loaders, routes
   fal       generate game assets with fal (sprites, textures, PBR, 3D, rigs, SFX, music, voice, video)
+  comfy     the same recipes on a local ComfyUI: your GPU, no API key
   sprite    cut out, fit, pixelate, recolor and pack 2D sprites
   render3d  render a GLB into sprite frames from a game's camera (Blender)
+  rig       auto-rig a humanoid GLB with Blender's Rigify (skin weights, idle/walk loops)
   video     compile styled showcase videos, trim, mux
   win       Windows (and WSL): screenshots, recording with game-only audio, input, processes
   backup    snapshot and restore save folders before you touch them

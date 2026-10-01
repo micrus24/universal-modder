@@ -7,13 +7,15 @@ FAIL  files byte-identical to files in the game install (redistributing game fil
 WARN  decompiler fingerprints in source (FUN_xxxx / DAT_xxxx / sub_XXXX, "// Decompiled with", ILSpy/dnSpy
       headers) - reimplement or reference instead of shipping decompiled code; big engine archives
       (.pak/.bsa/.ba2/.vpk/.rpf/.utoc...) that may carry original assets; absolute user paths; no README /
-      credits; fal-generated assets listed in fal_manifest.jsonl without an attribution line
+      credits; fal-generated assets listed in fal_manifest.jsonl without an attribution line; ComfyUI
+      models from comfy_manifest.jsonl not named in README/CREDITS
 Modelled on IW4L's publish-check. It is a lint, not legal advice: when in doubt ship a patch/converter that
 runs on the user's own install ("bring your own game files") instead of the files themselves.
 """
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -47,6 +49,42 @@ def _sha1(p: Path) -> str:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+_PRECISION = re.compile(r"(?<![a-z0-9])(fp\d+\w*|bf16|f16|f32|pruned|ema|scaled|e4m3fn|e5m2)(?![a-z0-9])")
+
+
+def _squash(text: str) -> str:
+    """Lower-case letters and digits only, so 'SDXL base 1.0' and 'sdxl-base-1.0' compare equal."""
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def credit_keys(name: str, engine: bool = False) -> list[str]:
+    """Spellings a README would plausibly use for a model file ('sd_xl_base_1.0.safetensors', with and without the
+    precision/format tags) or a TTS engine node ('ChatterBoxEngineNode' -> 'chatterbox')."""
+    if engine:
+        return [_squash(re.sub(r"(Engine)?Node$", "", name))]
+    stem = Path(name).name.rsplit(".", 1)[0] if name.lower().endswith((".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".gguf", ".sft", ".onnx")) else name
+    bare = _squash(_PRECISION.sub("", stem.lower()))
+    return list(dict.fromkeys(k for k in (_squash(stem), bare) if k))
+
+
+def _manifest_names(path: Path, warns: list[str], root: Path) -> list[tuple[str, bool]]:
+    """(name, is_engine) for every model / engine recorded in a comfy_manifest.jsonl; unreadable lines are reported."""
+    found = []
+    for n, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+            if not isinstance(rec, dict):
+                raise ValueError("not an object")
+        except ValueError:
+            warns.append(f"{path.relative_to(root)} line {n} is not valid JSON, skipped")
+            continue
+        found += [(x, False) for x in rec.get("models") or [] if isinstance(x, str)]
+        found += [(x, True) for x in rec.get("engines") or [] if isinstance(x, str)]
+    return found
 
 
 def check(mod: str, game: str | None = None) -> int:
@@ -97,11 +135,17 @@ def check(mod: str, game: str | None = None) -> int:
     names = {f.name.lower() for f in files}
     if not any(n.startswith("readme") for n in names):
         warns.append("no README (install steps, requirements, credits)")
-    manifests = [f for f in files if f.name == "fal_manifest.jsonl"]
-    if manifests:
-        readmes = [f for f in files if f.name.lower().startswith(("readme", "credits"))]
-        if not any("fal" in f.read_text(errors="replace").lower() for f in readmes):
-            warns.append("fal-generated assets (fal_manifest.jsonl) but no credit line in README/CREDITS")
+    readmes = [f for f in files if f.name.lower().startswith(("readme", "credits"))]
+    credits = " ".join(f.read_text(errors="replace").lower() for f in readmes)
+    squashed = _squash(credits)
+    if any(f.name == "fal_manifest.jsonl" for f in files) and "fal" not in credits:
+        warns.append("fal-generated assets (fal_manifest.jsonl) but no credit line in README/CREDITS")
+    for m in (f for f in files if f.name == "comfy_manifest.jsonl"):
+        used = dict.fromkeys(_manifest_names(m, warns, root))
+        uncredited = sorted(x for x, engine in used if not any(k in squashed for k in credit_keys(x, engine)))
+        if uncredited:
+            warns.append(f"ComfyUI-generated assets ({m.relative_to(root)}): credit the models in README/CREDITS "
+                         f"and check their licenses: {', '.join(uncredited)}")
     for x in fails:
         print("FAIL ", x)
     for x in warns:

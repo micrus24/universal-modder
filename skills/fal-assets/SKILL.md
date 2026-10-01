@@ -9,6 +9,9 @@ fal runs hundreds of generative models behind one API key. Use it whenever the m
 doesn't exist yet: a weapon sprite, a boss, a unit rendered from 16 angles, a tileable floor, a laser sound,
 boss music, a voiced line.
 
+No fal key, or the user wants it local and offline? The comfy-assets skill runs the same recipes on a
+local ComfyUI (`um comfy`).
+
 ## Setup (check once per session)
 - **Key.** `FAL_KEY` must be set (create one at https://fal.ai/dashboard/keys). `um fal` also reads it from
   a `.env` file (`FAL_KEY=...`) in the working folder. Never write the key into mod files; `um publish check`
