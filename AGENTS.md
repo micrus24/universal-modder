@@ -4,6 +4,11 @@ A game-modding toolkit and a shared knowledge base for AI coding agents: Claude 
 CLI, GitHub Copilot, OpenCode and anything else that reads `AGENTS.md`. When someone opens an agent in this
 repo, they almost always want to **mod a game**, or to learn how a game was modded.
 
+> **This is a local-first fork** of rehan-remade/universal-modder. Generate assets with `um comfy` (your own ComfyUI,
+> no API key) and rig humanoids with `um rig` (Blender). `um fal` and the fal MCP server are optional leftovers from
+> upstream and need `FAL_KEY`; don't ask the user for one unless they want the cloud route. Never open pull requests
+> against upstream: `um kb pr` targets this fork.
+
 ## Start here
 1. **Read `skills/mod-any-game/SKILL.md` and follow its loop:** intake → recon → route → lab (backups) →
    source of truth → vertical slice → assets → verify in the real game → showcase → publish.
@@ -15,21 +20,23 @@ repo, they almost always want to **mod a game**, or to learn how a game was modd
 ## Tools
 - **`bin/um`** is the Python CLI, and it sets itself up with `uv`.
   - Put it on PATH: `export PATH="$PWD/bin:$PATH"`, or install it anywhere with
-    `uv tool install git+https://github.com/rehan-remade/universal-modder`.
+    `uv tool install git+https://github.com/micrus24/universal-modder`.
   - Every group has `--help`:
     - `scan`: installed games, engine, anti-cheat, loaders, saves, routes
     - `fal`: sprites, textures, PBR, 3D, rigs, SFX, music, voice, video via fal's REST API
+    - `comfy`: the same recipes on a local ComfyUI (no API key; `um comfy check` says what's missing)
     - `sprite` / `render3d`: art → engine-ready frames
+    - `rig`: auto-rig a humanoid GLB with Blender's Rigify (skin weights, idle/walk loops, preview render)
     - `win`: launch, screenshot, input, record on Windows (also from WSL)
     - `video`: contact sheets and EDL showcase edits
     - `backup`: snapshot and restore saves
     - `publish`: pre-release lint
     - `kb`: the knowledge base
-- **fal MCP server:** `https://mcp.fal.ai/mcp` with header `Authorization: Bearer $FAL_KEY`.
+- **fal MCP server (optional, cloud):** `https://mcp.fal.ai/mcp` with header `Authorization: Bearer $FAL_KEY`.
   - It's pre-configured per agent: `.mcp.json` (Claude Code), `.codex/config.toml` (Codex),
     `.cursor/mcp.json` (Cursor), `.vscode/mcp.json` (VS Code / Copilot), `gemini-extension.json`
     (Gemini CLI).
-  - No MCP? `um fal` does the same over REST.
+  - No MCP? `um fal` does the same over REST. Neither is needed with `um comfy`.
 - **Skills** (`skills/*/SKILL.md`, Agent Skills format) are also linked where each agent looks for them:
   `.agents/skills` (Codex and others), `.claude/skills`, `.gemini/skills`, `.github/skills`.
 - **Engine playbooks:** `skills/mod-any-game/references/engines/`.

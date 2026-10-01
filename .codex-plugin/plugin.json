@@ -6,8 +6,8 @@
     "name": "Rehan",
     "url": "https://github.com/rehan-remade"
   },
-  "homepage": "https://github.com/rehan-remade/universal-modder",
-  "repository": "https://github.com/rehan-remade/universal-modder",
+  "homepage": "https://github.com/micrus24/universal-modder",
+  "repository": "https://github.com/micrus24/universal-modder",
   "license": "MIT",
   "keywords": [
     "game-modding",
@@ -35,7 +35,7 @@
       "Interactive",
       "Write"
     ],
-    "websiteURL": "https://github.com/rehan-remade/universal-modder",
+    "websiteURL": "https://github.com/micrus24/universal-modder",
     "defaultPrompt": [
       "Mod this game: add a new weapon with fal-generated sprites",
       "What engine is this game and how do people mod it?",
