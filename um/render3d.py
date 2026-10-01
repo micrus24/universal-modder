@@ -18,14 +18,9 @@ Pack them with `um sprite sheet`, or with an engine-specific writer (examples/ao
 """
 from __future__ import annotations
 
-import json
-import os
-import shutil
-import subprocess
-import tempfile
 from pathlib import Path
 
-from um.common import die, parse_size
+from um.common import blender_bin, die, parse_size, run_blender  # noqa: F401  (blender_bin: re-exported for callers)
 
 PRESETS = {
     "aoe2": dict(type="ortho", elevation_deg=30, headings=16, start_deg=0, clockwise=True),
@@ -40,16 +35,6 @@ MOTIONS = {
     "lunge": dict(kind="lunge", dist=12, pitch=-3), "die": dict(kind="die", roll=80, sink=3), "wreck": dict(kind="wreck", roll=80, sink=3),
     "spin": dict(kind="spin", turns=1), "still": None,
 }
-
-
-def blender_bin() -> str:
-    b = os.environ.get("BLENDER") or shutil.which("blender")
-    if not b:
-        for c in ("/Applications/Blender.app/Contents/MacOS/Blender", r"C:\Program Files\Blender Foundation\Blender\blender.exe"):
-            if Path(c).exists():
-                return c
-        die("Blender not found: install it (blender.org, or `snap install blender --classic`) or set BLENDER=/path/to/blender")
-    return b
 
 
 def parse_anims(spec: str) -> dict:
@@ -81,11 +66,9 @@ def render(glb: str, out_dir: str, preset: str = "aoe2", canvas="200", length: f
     if ground_y is not None:
         cfg["ground_y"] = ground_y
     script = Path(__file__).parent / "blender" / "render_sprites.py"
-    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
-        json.dump(cfg, f)
     n = sum(a["frames"] for a in cfg["anims"].values()) * cam["headings"] * (2 if shadows else 1)
     print(f"rendering {n} images with Blender ({engine}, {samples} samples) -> {out}")
-    r = subprocess.run([blender_bin(), "-b", "--python", str(script), "--", f.name], capture_output=True, text=True)
+    r = run_blender(script, cfg)
     done = [l for l in r.stdout.splitlines() if l.startswith("UM_RENDER_DONE")]
     if r.returncode or not done:
         die("Blender failed:\n" + (r.stderr or r.stdout)[-3000:])

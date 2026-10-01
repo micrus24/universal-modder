@@ -46,11 +46,86 @@ def to_posix(path: str | Path) -> str:
     return p
 
 
-def data_dir() -> Path:
-    """Per-user state: backups, downloaded tools. Override with UM_HOME."""
+def data_dir(create: bool = True) -> Path:
+    """Per-user state: backups, downloaded tools. Override with UM_HOME. create=False just names the folder."""
     d = Path(os.environ.get("UM_HOME", Path.home() / ".universal-modder"))
-    d.mkdir(parents=True, exist_ok=True)
+    if create:
+        d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def dotenv_value(key: str) -> str | None:
+    """KEY=value from a .env file in the working folder or the toolkit's own folder (not from the environment)."""
+    import re
+    for env in (Path.cwd() / ".env", Path(__file__).resolve().parents[1] / ".env"):
+        if env.exists():
+            m = re.search(rf"^\s*{re.escape(key)}\s*=\s*['\"]?([^'\"\s]+)", env.read_text(), re.M)
+            if m:
+                return m.group(1)
+    return None
+
+
+def parse_kv(pairs: list[str] | None) -> dict:
+    """key=value (string) and key:=json (number/bool/list/object); a value '@file' is left for the caller to upload."""
+    out = {}
+    for p in pairs or []:
+        if ":=" in p:
+            k, v = p.split(":=", 1)
+            out[k] = json.loads(v)
+        elif "=" in p:
+            k, v = p.split("=", 1)
+            out[k] = v
+        else:
+            die(f"bad argument {p!r}: use key=value or key:=json")
+    return out
+
+
+def asset_name(args, fallback: str) -> str:
+    """--name if given, else a short file stem made from the prompt."""
+    import re
+    if getattr(args, "name", None):
+        return args.name
+    words = re.sub(r"[^a-z0-9 ]", "", fallback.lower()).split()[:5]
+    return "_".join(words) or "asset"
+
+
+def _version_key(path: Path) -> tuple:
+    """('Blender 4.2' -> (4, 2)): installed versions compare as numbers, not text ('10.0' > '5.2')."""
+    import re
+    m = re.search(r"(\d+(?:\.\d+)*)", path.parent.name)
+    return tuple(int(x) for x in m.group(1).split(".")) if m else (0,)
+
+
+def _windows_drives() -> list[str]:
+    import ctypes
+    mask = ctypes.windll.kernel32.GetLogicalDrives()
+    return [chr(65 + i) for i in range(26) if mask >> i & 1]
+
+
+def blender_bin() -> str:
+    """BLENDER=, else PATH, else the usual install folders (any drive on Windows, newest version first)."""
+    b = os.environ.get("BLENDER") or shutil.which("blender")
+    if b:
+        return b
+    if Path("/Applications/Blender.app/Contents/MacOS/Blender").exists():
+        return "/Applications/Blender.app/Contents/MacOS/Blender"
+    if os.name == "nt":   # the installer's default folder is versioned ("Blender 5.2") and may be on any drive
+        roots = [Path(f"{d}:\\{pf}\\Blender Foundation") for d in _windows_drives() for pf in ("Program Files", "Program Files (x86)")]
+        hits = sorted((p for r in roots for p in r.glob("Blender*/blender.exe")), key=_version_key, reverse=True)
+        if hits:
+            return str(hits[0])
+    die("Blender not found: install it (blender.org, or `snap install blender --classic`) or set BLENDER=/path/to/blender")
+
+
+def run_blender(script: Path, cfg: dict, timeout: float | None = None) -> subprocess.CompletedProcess:
+    """`blender -b --python script -- cfg.json`. The config is a temp file that is removed afterwards; output is decoded
+    as UTF-8 (Blender's, not the console code page)."""
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="um_blender_") as d:
+        f = Path(d) / "config.json"
+        f.write_text(json.dumps(cfg), encoding="utf-8")
+        return subprocess.run([blender_bin(), "-b", "--python", str(script), "--", str(f)], capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=timeout)
 
 
 def run(cmd: list[str], check: bool = True, capture: bool = True, timeout: float | None = None, **kw) -> subprocess.CompletedProcess:

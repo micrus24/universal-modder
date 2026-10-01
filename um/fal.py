@@ -34,7 +34,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from um.common import die
+from um.common import asset_name as _name, die, dotenv_value, parse_kv as _kv
 
 QUEUE = "https://queue.fal.run"
 REST = "https://rest.fal.ai"
@@ -75,13 +75,7 @@ def fal_key() -> str:
     k = os.environ.get("FAL_KEY")
     if not k and os.environ.get("FAL_KEY_FILE"):
         k = Path(os.environ["FAL_KEY_FILE"]).expanduser().read_text().strip()
-    if not k:
-        for env in (Path.cwd() / ".env", Path(__file__).resolve().parents[1] / ".env"):
-            if env.exists():
-                m = re.search(r"^\s*FAL_KEY\s*=\s*['\"]?([^'\"\s]+)", env.read_text(), re.M)
-                if m:
-                    k = m.group(1)
-                    break
+    k = k or dotenv_value("FAL_KEY")
     if not k:
         die("FAL_KEY is not set. Create a key at https://fal.ai/dashboard/keys and `export FAL_KEY=...` "
             "(or put FAL_KEY=... in a .env file here)")
@@ -302,28 +296,6 @@ def price(endpoint: str) -> dict:
 
 
 # --------------------------------------------------------------------------- recipes
-
-
-def _kv(pairs: list[str]) -> dict:
-    """key=value (string) and key:=json (number/bool/list/object); value '@file' uploads a local file."""
-    out = {}
-    for p in pairs or []:
-        if ":=" in p:
-            k, v = p.split(":=", 1)
-            out[k] = json.loads(v)
-        elif "=" in p:
-            k, v = p.split("=", 1)
-            out[k] = v
-        else:
-            die(f"bad argument {p!r}: use key=value or key:=json")
-    return out
-
-
-def _name(args, fallback: str) -> str:
-    if getattr(args, "name", None):
-        return args.name
-    words = re.sub(r"[^a-z0-9 ]", "", fallback.lower()).split()[:5]
-    return "_".join(words) or "asset"
 
 
 def cmd(args):
