@@ -408,7 +408,8 @@ def test_voice_defaults_for_engines_that_need_a_reference():
             "F5TTSEngineNode": node(["TTS_ENGINE"], {"device": [["auto"]]}),
             "ChatterBoxEngineNode": node(["TTS_ENGINE"], {"device": [["auto"]]}),
             "UnifiedTTSTextNode": node(["AUDIO", "STRING"], {"TTS_engine": ["TTS_ENGINE"], "text": S, "seed": I,
-                                                             "narrator_voice": [["none", "voices_examples/male/male_01.wav", "voices_examples/female/female_02.wav"]]})}
+                                                             "narrator_voice": [["none", "voices_examples/female/female_01.wav", "voices_examples/female/female_02.wav",
+                                                                                 "voices_examples/male/male_01.wav"]]})}
 
     def voice(**kw):
         g = comfy.Graph(info)
@@ -418,6 +419,8 @@ def test_voice_defaults_for_engines_that_need_a_reference():
     assert voice() == "none"                                              # ChatterBox speaks without a reference
     assert voice(engine="F5TTSEngineNode") == "voices_examples/male/male_01.wav"
     assert voice(voice="female_02") == "voices_examples/female/female_02.wav"
+    assert voice(voice="male_01") == "voices_examples/male/male_01.wav"   # a substring of female_01, listed first
+    assert voice(voice="male/male_01") == "voices_examples/male/male_01.wav"
     with pytest.raises(comfy.Missing):
         voice(voice="nobody")
 

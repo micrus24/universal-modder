@@ -659,6 +659,18 @@ def tts_nodes(info: dict) -> list[str]:
     return sorted(found, key=lambda c: next((i for i, p in enumerate(TTS_PREFER) if p in c.lower()), len(TTS_PREFER)))
 
 
+def voice_match(voices: list[str], want: str) -> list[str]:
+    """Voices whose path, file name or stem equals `want`, else those containing it, so male_01 never picks female_01."""
+    w = want.lower().replace("\\", "/")
+
+    def names(c: str) -> set[str]:
+        c = c.lower().replace("\\", "/")
+        base = c.rsplit("/", 1)[-1]
+        return {c, base, base.rsplit(".", 1)[0]}
+
+    return [c for c in voices if w in names(c)] or [c for c in voices if w in c.lower().replace("\\", "/")]
+
+
 def b_voice(g: Graph, v: dict):
     if g.has("UnifiedTTSTextNode") and not v.get("node"):
         engines = tts_engines(g.info)
@@ -673,12 +685,12 @@ def b_voice(g: Graph, v: dict):
         voices = g.choices("UnifiedTTSTextNode", "narrator_voice")
         voice = "none"
         if v.get("voice"):
-            hit = [c for c in voices if v["voice"].lower() in c.lower()]
+            hit = voice_match(voices, v["voice"])
             if not hit:
                 raise Missing(f"voice {v['voice']!r} not found; the pack ships: {', '.join(c for c in voices if c != 'none')}")
             voice = hit[0]
         elif eng in NEEDS_REF_VOICE and not v.get("audio"):    # these engines can't speak without a reference clip + text
-            voice = next((c for c in voices if "male_01" in c), next((c for c in voices if c != "none"), "none"))
+            voice = next(iter(voice_match(voices, "male_01")), next((c for c in voices if c != "none"), "none"))
         node = g.add("UnifiedTTSTextNode", *links, text=v["text"], seed=v["seed"], narrator_voice=voice)
         g.add("SaveAudio", audio=node["AUDIO"], filename_prefix=v["prefix"])
         return
