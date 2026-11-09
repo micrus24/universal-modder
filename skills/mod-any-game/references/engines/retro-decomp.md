@@ -1,7 +1,8 @@
 # Retro and console games: decomps, recomps, emulators
 
-The user must own the game and dump it themselves. Never download ROMs, ISOs or leaked source. Projects
-built on leaked material get shunned ("leak poisoning"); clean decomps (libsm64's) get adopted.
+The user must own the game and dump it themselves. Never download ROMs, ISOs, leaked source or leaked builds.
+Knowledge from leaks is fine to use, but some projects refuse anything built on leaked material ("leak
+poisoning"; clean decomps such as libsm64 get adopted), so check a project's rules before contributing.
 
 ## Is there already a decompilation or port?
 Many classics have matching decompilations (C source that compiles back to the identical ROM) and native PC
@@ -53,6 +54,12 @@ decomp can take billions of tokens.
   - patch code or data in the ROM and distribute an IPS/BPS/xdelta patch, never the ROM;
   - existing editors: Lunar Magic (SMW), Wiimm's SZS tools (Mario Kart Wii tracks), Pokémon hacking tools.
 - **Dolphin:** texture packs, Gecko/AR codes, Riivolution patches for GameCube/Wii.
+
+## On the console itself
+Custom firmware loads replacement files over a game's RomFS without touching the game: LayeredFS reads
+`/luma/titles/<title ID>/romfs/` with Luma3DS (3DS) and `/atmosphere/contents/<title ID>/romfs/` with
+Atmosphère (Switch). Install it on the user's own console, by the community guide and only once they agree.
+The rules are in `../safety.md` (Consoles).
 
 ## Pitfalls
 - Some recomp/decomp communities ban AI-generated contributions. Respect each project's rules and disclose

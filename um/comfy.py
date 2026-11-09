@@ -53,7 +53,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-from um.common import asset_name as _name, data_dir, die, dotenv_value, need, parse_kv as _kv, parse_size
+from um.common import asset_name as _name, data_dir, die, dotenv_value, need, parse_kv as _kv, parse_size, text_utf8
 from um.fal import SPRITE_STYLE
 
 DEFAULT_URLS = ("http://127.0.0.1:8188", "http://127.0.0.1:8000")
@@ -964,7 +964,7 @@ def is_silent(path: str, floor: float = -70.0) -> bool:
     ff = shutil.which("ffmpeg")
     if not ff:
         return False
-    r = subprocess.run([ff, "-hide_banner", "-i", path, "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True)
+    r = subprocess.run([ff, "-hide_banner", "-i", path, "-af", "volumedetect", "-f", "null", "-"], capture_output=True, **text_utf8())
     m = re.search(r"max_volume:\s*(-?[\d.]+|-inf) dB", r.stderr)
     return bool(m) and (m.group(1) == "-inf" or float(m.group(1)) < floor)
 

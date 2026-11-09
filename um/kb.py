@@ -16,16 +16,19 @@ requests: that's how one agent's hard-won gotchas reach the next one. Ask your h
 from __future__ import annotations
 
 import datetime as dt
+import http.client
 import json
 import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from um.common import data_dir, die
+from um.common import data_dir, die, need, text_utf8
 
 REPO = os.environ.get("UM_KB_REPO", "micrus24/universal-modder")
 BRANCH = os.environ.get("UM_KB_BRANCH", "main")
@@ -35,9 +38,15 @@ STATUSES = ["idea", "in-progress", "working", "released", "abandoned"]
 PLATFORMS = ["windows", "linux", "macos", "proton", "emulator", "console", "other"]
 GAME_KEYS = ["kind", "title", "game", "engine", "route", "status", "date", "agents"]
 TECH_KEYS = ["kind", "title", "tags", "date", "agents"]
+LIST_KEYS = ["games_also", "tools", "agents", "humans", "links", "tags"]
 GAME_SECTIONS = ["setup", "route", "verification", "gotchas"]
 MAX_BLOCK_WARN, MAX_BLOCK_FAIL = 60, 150
 MAX_NOTE_KB, MAX_MEDIA_MB = 120, 1.5
+# Notes and the index are UTF-8 with \n line ends on every OS. Without this, Windows reads and writes them in its
+# ANSI code page with \r\n: the index's "·" separators come out as invalid UTF-8 and `um kb check --index` fails.
+TEXT = {"encoding": "utf-8", "newline": "\n"}
+# a failed sync: the network, a connection dropped mid-file (http.client's errors aren't OSErrors), a bad answer
+SYNC_ERRORS = (OSError, ValueError, http.client.HTTPException)
 
 
 # --------------------------------------------------------------------------- where the notes are
@@ -57,25 +66,64 @@ def cache_root() -> Path:
     return data_dir() / "kb" / REPO.replace("/", "__") / "knowledge"
 
 
-def sync(quiet: bool = False) -> Path:
-    """Mirror knowledge/ from GitHub into the cache (git tree API + raw files; no auth needed)."""
+def _download(url: str, timeout: float) -> bytes:
+    request = urllib.request.Request(url, headers={"User-Agent": "universal-modder", "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return response.read()
+
+
+def sync(quiet: bool = False, *, timeout: float = 20, workers: int = 8) -> Path:
+    """Mirror knowledge/ from GitHub into the cache (git tree API + raw files; no auth needed).
+
+    Downloads are bounded and concurrent. Progress goes to stderr so a caller parsing JSON from stdout is unaffected;
+    quiet only drops the closing line on stdout. The previous cache is replaced only after every selected file has
+    downloaded.
+    """
+    if timeout <= 0 or workers < 1:
+        raise ValueError("timeout and workers must be positive")
     api = f"https://api.github.com/repos/{REPO}/git/trees/{BRANCH}?recursive=1"
-    req = urllib.request.Request(api, headers={"User-Agent": "universal-modder", "Accept": "application/vnd.github+json"})
-    tree = json.load(urllib.request.urlopen(req, timeout=60))
+    tree = json.loads(_download(api, timeout))
     paths = [t["path"] for t in tree.get("tree", []) if t["type"] == "blob" and t["path"].startswith("knowledge/")
              and t["path"].endswith((".md", ".json"))]
+    if not paths:  # a branch without knowledge/, say: don't replace the cache with nothing
+        raise ValueError(f"no knowledge files on {REPO}@{BRANCH}")
     root = cache_root()
     tmp = root.with_name("knowledge.tmp")
     shutil.rmtree(tmp, ignore_errors=True)
-    for p in paths:
-        dst = tmp / p[len("knowledge/"):]
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        url = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}/{p}"
-        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "universal-modder"}), timeout=60) as r:
-            dst.write_bytes(r.read())
+    tmp.mkdir(parents=True)
+    completed = 0
+    live = sys.stderr.isatty()  # a counter for a terminal: a tool call or a CI log would keep every update
+
+    def report():
+        if live:
+            print(f"\rknowledge sync: {completed}/{len(paths)}", end="", file=sys.stderr, flush=True)
+
+    if not live:
+        print(f"knowledge sync: {len(paths)} files...", file=sys.stderr, flush=True)
+    report()
+    pool = ThreadPoolExecutor(max_workers=min(workers, len(paths)))
+    try:
+        futures = {pool.submit(_download, f"https://raw.githubusercontent.com/{REPO}/{BRANCH}/{path}", timeout): path
+                   for path in paths}
+        for future in as_completed(futures):
+            path = futures[future]
+            destination = tmp / path[len("knowledge/"):]
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(future.result())
+            completed += 1
+            report()
+    except BaseException:
+        pool.shutdown(cancel_futures=True)  # on a stalled network each queued file would wait out its own timeout
+        shutil.rmtree(tmp, ignore_errors=True)
+        if live:
+            print(file=sys.stderr)
+        raise
+    pool.shutdown()
     shutil.rmtree(root, ignore_errors=True)
     tmp.rename(root)
-    (root / ".synced").write_text(str(time.time()))
+    (root / ".synced").write_text(str(time.time()), **TEXT)
+    if live:
+        print(file=sys.stderr)
     if not quiet:
         print(f"synced {len(paths)} files from github.com/{REPO} -> {root}")
     return root
@@ -91,12 +139,14 @@ def resolve_root(explicit: str | None = None, remote: bool = False) -> Path:
         return loc
     root = cache_root()
     stamp = root / ".synced"
-    stale = not stamp.exists() or time.time() - float(stamp.read_text() or 0) > 86400
+    stale = not stamp.exists() or time.time() - float(stamp.read_text(encoding="utf-8") or 0) > 86400
     if stale:
         try:
             return sync(quiet=True)
-        except OSError as e:
-            if not root.exists():
+        except SYNC_ERRORS as e:
+            if root.exists():
+                print(f"knowledge sync failed ({e}); using the stale cache {root}", file=sys.stderr)
+            else:
                 die(f"no local knowledge/ and GitHub sync failed ({e}); clone https://github.com/{REPO}")
     return root
 
@@ -108,10 +158,10 @@ def parse(path: Path) -> tuple[dict, str]:
     m = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", text, re.S)
     if not m:
         return {}, text
-    import yaml
+    yaml = need("yaml", "pyyaml")
     try:
         meta = yaml.safe_load(m.group(1)) or {}
-    except yaml.YAMLError as e:
+    except (yaml.YAMLError, ValueError) as e:  # ValueError: a date YAML can't build, e.g. 2026-09-31
         return {"_yaml_error": str(e)}, m.group(2)
     return (meta if isinstance(meta, dict) else {}), m.group(2)
 
@@ -131,13 +181,41 @@ def slug(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")[:60] or "note"
 
 
+def strs(v) -> list[str]:
+    """A list field as text, whatever YAML made of it: an unquoted `[Cataclysm: Dark Days Ahead]` is a dict,
+    `[2004]` an int, a bare `tools: Ghidra` a string."""
+    if v is None or v == "":
+        return []
+    return [str(x) for x in (v if isinstance(v, list) else [v])]
+
+
 # --------------------------------------------------------------------------- search
 
+def _term(t: str) -> re.Pattern:
+    """A search term that must start a word: "rust" finds "Rust" and "rusty", not "trust" or "frustum".
+    A term that starts with punctuation (".esp", ".net") still matches anywhere, so it finds "plugin.esp"."""
+    return re.compile((r"(?<![a-z0-9])" if t[:1].isalnum() else "") + re.escape(t))
+
+
+def _groups(args: list[str]) -> list[list[re.Pattern]]:
+    """One group per command-line argument: [term] for a word, [phrase, *words] for a quoted multi-word argument
+    ("grand theft auto", "alpha test shader"). A note matches a group with the phrase or with all of its words, so a
+    quoted topic query finds notes that use the words apart (a phrase alone returned nothing) without listing every
+    note that has one of them. The phrase is scored as a term too, so notes with the exact phrase rank higher."""
+    out = []
+    for a in args:
+        a = " ".join(a.lower().split())
+        if a:
+            out.append([_term(a)] + ([_term(w) for w in dict.fromkeys(a.split(" "))] if " " in a else []))
+    return out
+
+
 def search(root: Path, terms: list[str], game=None, engine=None, route=None, limit=10) -> list[dict]:
-    terms = [t.lower() for t in terms if t.strip()]
+    groups = _groups(terms)
+    terms = list({t.pattern: t for g in groups for t in g}.values())
     res = []
     for p, meta, body in notes(root):
-        if game and slug(game) not in slug(str(meta.get("game", ""))) + " " + " ".join(slug(g) for g in meta.get("games_also") or []):
+        if game and slug(game) not in slug(str(meta.get("game", ""))) + " " + " ".join(slug(g) for g in strs(meta.get("games_also"))):
             continue
         if engine and str(meta.get("engine", "")).lower() != engine.lower():
             continue
@@ -145,17 +223,25 @@ def search(root: Path, terms: list[str], game=None, engine=None, route=None, lim
             continue
         fields = {
             5: str(meta.get("title", "")),
-            4: " ".join([str(meta.get("game", ""))] + [str(g) for g in meta.get("games_also") or []]),
-            3: " ".join(str(x) for x in [meta.get("engine", ""), meta.get("route", ""), *(meta.get("tags") or []), *(meta.get("tools") or [])]),
+            4: " ".join([str(meta.get("game", ""))] + strs(meta.get("games_also"))),
+            3: " ".join(str(x) for x in [meta.get("engine", ""), meta.get("route", ""), *strs(meta.get("tags")), *strs(meta.get("tools"))]),
         }
         low = body.lower()
+        text = low + "\n" + "\n".join(f.lower() for f in fields.values())
+        # at least one argument must match (unquoted words stay OR-ed): a word anywhere, a quoted phrase as the
+        # phrase or with all of its words
+        if groups and not any(g[0].search(text) or (len(g) > 1 and all(t.search(text) for t in g[1:])) for g in groups):
+            continue
         score = 0
         for t in terms:
-            score += sum(w for w, f in fields.items() if t in f.lower())
-            score += min(5, low.count(t))
+            score += sum(w for w, f in fields.items() if t.search(f.lower()))
+            score += min(5, len(t.findall(low)))
         if terms and score == 0:
             continue
-        hits = [ln.strip() for ln in body.splitlines() if ln.strip() and any(t in ln.lower() for t in terms)][:3]
+        # the lines matching the most distinct terms first; sorted() is stable, so ties keep note order
+        lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
+        counted = [(sum(1 for t in terms if t.search(ln.lower())), ln) for ln in lines]
+        hits = [ln for n, ln in sorted((c for c in counted if c[0]), key=lambda c: -c[0])][:3]
         res.append(dict(score=score, path=p.relative_to(root).as_posix(), title=meta.get("title"), game=meta.get("game"),
                         engine=meta.get("engine"), route=meta.get("route"), status=meta.get("status"), hits=hits))
     res.sort(key=lambda r: -r["score"])
@@ -191,15 +277,25 @@ def check_note(path: Path, root: Path | None = None) -> tuple[list[str], list[st
         for s in GAME_SECTIONS:
             if not any(h.startswith(s) for h in heads):
                 fails.append(f"missing section: ## {s.capitalize()}...")
-        if "gotchas" in " ".join(heads) and not re.search(r"^##\s+Gotchas.*?\n(?:.*\n)*?\s*1\.", body, re.M | re.I):
+        # numbered items count as a list item ("1. ...") or a numbered subheading ("### 1. ...")
+        if "gotchas" in " ".join(heads) and not re.search(
+                r"^##\s+Gotchas.*?\n(?:.*\n)*?(?:\s*1\.|\s*#{2,6}\s+1\.)", body, re.M | re.I):
             warns.append("Gotchas section has no numbered items")
     if meta.get("status") and meta["status"] not in STATUSES:
         fails.append(f"status {meta['status']!r} not one of: {', '.join(STATUSES)}")
     d = meta.get("date")
     if d and not isinstance(d, dt.date) and not re.match(r"^\d{4}-\d{2}-\d{2}$", str(d)):
         fails.append(f"date must be YYYY-MM-DD, got {d!r}")
-    if not isinstance(meta.get("agents", []), list):
-        fails.append("agents must be a list, e.g. [\"Codex (gpt-6)\"]")
+    for k in LIST_KEYS:
+        v = meta.get(k)
+        if v is not None and not isinstance(v, list):
+            fails.append(f'{k} must be a list, e.g. {k}: ["a", "b"]')
+        # YAML reads an unquoted `Cataclysm: Dark Days Ahead` as a dict, `2004` as an int, and splits `Python (a, b)` in two
+        for x in v if isinstance(v, list) else []:
+            if not isinstance(x, str):
+                fails.append(f"{k}: item {x!r} is YAML {type(x).__name__}, not text; quote it, e.g. [\"Cataclysm: Dark Days Ahead\"]")
+            elif any(x.count(a) != x.count(b) for a, b in ("()", "[]", "{}")):
+                fails.append(f"{k}: item {x!r} has unbalanced brackets (split on a comma?); quote items that contain commas")
     if "Homing missiles and a tactical nuke in Terraria" == meta.get("title") and "TEMPLATE" not in path.name:
         fails.append("title is still the template's example title")
     left = [ph for ph in ("FILL IN", "Two to four sentences:", "Numbered; each one symptom", "What you saw. **Cause:** what it really was")
@@ -223,6 +319,18 @@ def check_note(path: Path, root: Path | None = None) -> tuple[list[str], list[st
         warns.append("absolute user path (use <you>, %USERPROFILE% or ~ instead)")
     if len(text.encode()) > MAX_NOTE_KB * 1024:
         warns.append(f"note is {len(text.encode()) // 1024} KB; split it or trim (limit {MAX_NOTE_KB} KB)")
+    # links to other notes: any relative Markdown link to a .md file (an #anchor is fine), and a `games/...md` /
+    # `techniques/...md` path in backticks, from the knowledge root (also written `knowledge/games/...md`)
+    for m in re.finditer(r"\]\(([^)\s#]+\.md)(?:#[^)\s]*)?\)", body):
+        target = m.group(1)
+        if not re.match(r"[a-z][a-z0-9+.-]*:|/", target, re.I) and not (path.parent / target).resolve().exists():
+            warns.append(f"link to a note that does not exist: {target} (links are relative to this note's folder; "
+                         f"if the file lives in another repo, link to it on GitHub instead)")
+    kroot = root or next((p for p in path.resolve().parents if p.name == "knowledge"), None)
+    if kroot is not None:
+        for m in re.finditer(r"`(?:knowledge/)?((?:games|techniques)/[a-z0-9_./-]+\.md)`", body):
+            if not (kroot / m.group(1)).exists():
+                warns.append(f"reference to a note that does not exist: {m.group(1)}")
     for m in re.finditer(r"!\[[^\]]*\]\(([^)\s]+)\)", body):
         src = m.group(1)
         if src.startswith("http"):
@@ -249,12 +357,13 @@ def build_index(root: Path) -> tuple[str, list[dict]]:
              f"## Games ({len(games)} notes)", "",
              "| Game | Note | Engine | Route | Status | Agents | Date |", "|---|---|---|---|---|---|---|"]
     for r in games:
-        g = esc(r.get("game")) + (" + " + ", ".join(esc(x) for x in r.get("games_also") or []) if r.get("games_also") else "")
+        also = strs(r.get("games_also"))
+        g = esc(r.get("game")) + (" + " + ", ".join(esc(x) for x in also) if also else "")
         lines.append(f"| {g} | [{esc(r.get('title'))}]({r['path']}) | {esc(r.get('engine'))} | {esc(r.get('route'))} | "
-                     f"{esc(r.get('status'))} | {esc(', '.join(r.get('agents') or []))} | {esc(r.get('date'))} |")
+                     f"{esc(r.get('status'))} | {esc(', '.join(strs(r.get('agents'))))} | {esc(r.get('date'))} |")
     lines += ["", f"## Techniques ({len(techs)} notes)", ""]
     for r in techs:
-        lines.append(f"- [{esc(r.get('title'))}]({r['path']}) · {esc(', '.join(r.get('tags') or []))}")
+        lines.append(f"- [{esc(r.get('title'))}]({r['path']}) · {esc(', '.join(strs(r.get('tags'))))}")
     lines += ["", "## Engine playbooks", "",
               "Per-engine routes and tools live with the skills: "
               "[skills/mod-any-game/references/engines/](../skills/mod-any-game/references/engines/).", ""]
@@ -265,7 +374,7 @@ def build_index(root: Path) -> tuple[str, list[dict]]:
 
 def new_note(root: Path, game: str | None, title: str, kind: str = "game", from_scan: str | None = None,
              engine: str | None = None, route: str | None = None, agent: str | None = None, out: str | None = None) -> Path:
-    import yaml
+    yaml = need("yaml", "pyyaml")
     meta, body = parse(root / "TEMPLATE.md")
     meta = {k: v for k, v in meta.items()}
     meta.update(kind=kind, title=title, date=dt.date.today().isoformat(), agents=[agent or os.environ.get("UM_AGENT", "FILL IN: agent (model)")],
@@ -293,8 +402,16 @@ def new_note(root: Path, game: str | None, title: str, kind: str = "game", from_
     if path.exists():
         die(f"{path} exists")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(f"---\n{front}---\n{body}", encoding="utf-8", newline="\n")
+    path.write_text(f"---\n{front}---\n{body}", **TEXT)
     return path
+
+
+def pr_head(branch: str, fork_url: str | None) -> str:
+    """The --head for `gh pr create`. gh looks a bare branch name up in the base repo, so a PR from a fork needs
+    "<fork owner>:<branch>" (else: "Head ref must be a branch"). fork_url: the fork remote's URL, None when pushing
+    to the repo itself."""
+    m = re.search(r"github\.com[:/]+([^/]+)/", fork_url or "")
+    return f"{m.group(1)}:{branch}" if m else branch
 
 
 def open_pr(path: Path, yes: bool):
@@ -316,7 +433,7 @@ def open_pr(path: Path, yes: bool):
     media = [p for p in path.parent.glob("media/*")] if (path.parent / "media").exists() else []
     can_push = False
     if shutil.which("gh"):
-        r = subprocess.run(["gh", "api", f"repos/{REPO}", "--jq", ".permissions.push"], capture_output=True, text=True)
+        r = subprocess.run(["gh", "api", f"repos/{REPO}", "--jq", ".permissions.push"], capture_output=True, **text_utf8())
         can_push = r.stdout.strip() == "true"
     remote = "origin" if can_push else "fork"
     cmds = [["git", "checkout", "-b", branch], ["um", "kb", "index"],
@@ -334,14 +451,17 @@ def open_pr(path: Path, yes: bool):
     if not shutil.which("gh"):
         die("needs the GitHub CLI (gh) logged in; or push a branch and open the PR on github.com")
     idx, rows = build_index(root)
-    (root / "INDEX.md").write_text(idx, encoding="utf-8", newline="\n")
-    (root / "index.json").write_text(json.dumps(rows, indent=1, default=str), encoding="utf-8", newline="\n")
+    (root / "INDEX.md").write_text(idx, **TEXT)
+    (root / "index.json").write_text(json.dumps(rows, indent=1, default=str) + "\n", **TEXT)
     for c in cmds:
         if c[:3] == ["um", "kb", "index"]:
             continue
         if c[:3] == ["gh", "repo", "fork"] and subprocess.run(["git", "remote", "get-url", "fork"], cwd=repo, capture_output=True).returncode == 0:
             continue
-        r = subprocess.run(c, cwd=repo, capture_output=True, text=True)
+        if c[:3] == ["gh", "pr", "create"] and remote == "fork":
+            url = subprocess.run(["git", "remote", "get-url", "fork"], cwd=repo, capture_output=True, **text_utf8()).stdout.strip()
+            c[c.index("--head") + 1] = pr_head(branch, url)
+        r = subprocess.run(c, cwd=repo, capture_output=True, **text_utf8())
         if r.returncode:
             die(f"{' '.join(c[:4])} failed: {(r.stderr or r.stdout).strip()[-800:]}")
         if c[:3] == ["gh", "pr", "create"]:
@@ -353,7 +473,10 @@ def open_pr(path: Path, yes: bool):
 def main(a):
     c = a.cmd
     if c == "sync":
-        sync()
+        try:
+            sync()
+        except SYNC_ERRORS as e:
+            die(f"GitHub sync failed: {e}")
         return
     if c == "search":
         root = resolve_root(a.root, a.remote)
@@ -389,7 +512,13 @@ def main(a):
         return
     if c == "check":
         root = Path(a.root) if a.root else local_root()
-        paths = [Path(x) for x in a.paths] or ([p for p, _, _ in notes(root)] if root else [])
+        if root and not root.is_dir():
+            die(f"not a folder: {root}")
+        if not root and not a.paths:
+            die("no local knowledge/ folder to check: run inside a clone of the repo, or pass --root or note paths")
+        paths = [Path(x) for x in a.paths] or [p for p, _, _ in notes(root)]
+        if not paths:
+            die(f"no notes to check in {root}")
         bad = 0
         for p in paths:
             fails, warns = check_note(p, root)
@@ -398,7 +527,10 @@ def main(a):
             for w in warns:
                 print(f"WARN {p}: {w}")
             bad += bool(fails)
-        if root and a.index and not a.paths:
+        if a.index and not root:
+            print("FAIL --index: no knowledge/ folder to check INDEX.md in; run inside a clone of the repo or pass --root")
+            bad += 1
+        elif a.index:
             idx, _ = build_index(root)
             if not (root / "INDEX.md").exists() or (root / "INDEX.md").read_text(encoding="utf-8") != idx:
                 print("FAIL knowledge/INDEX.md is out of date: run `um kb index`")
@@ -410,8 +542,8 @@ def main(a):
         if not root:
             die("no local knowledge/ folder")
         idx, rows = build_index(root)
-        (root / "INDEX.md").write_text(idx, encoding="utf-8", newline="\n")
-        (root / "index.json").write_text(json.dumps(rows, indent=1, default=str) + "\n", encoding="utf-8", newline="\n")
+        (root / "INDEX.md").write_text(idx, **TEXT)
+        (root / "index.json").write_text(json.dumps(rows, indent=1, default=str) + "\n", **TEXT)
         print(f"{root / 'INDEX.md'}: {len(rows)} notes")
         return
     if c == "pr":

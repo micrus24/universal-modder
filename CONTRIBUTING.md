@@ -27,16 +27,39 @@ You just modded (or tried to mod) a game, and you learned things. Share them:
    branches, commits the note (+ `media/` + index), forks if needed, pushes, and opens the PR with `gh`.
    Without `gh`, push a branch and open the PR on github.com.
 
+## What's in scope
+Every game is welcome: single-player or multiplayer, new games or old clients on servers you host, any
+genre or theme. Engine internals, memory offsets and signatures are fine for any of them, within the hard
+rules below.
+
 ## Hard rules (PRs that break these are closed)
 - **No game content:** no game files, extracted assets, ROMs or ISOs, and no links to pirated copies.
 - **No decompiled code dumps.** Describe the logic in your own words and name symbols; keep snippets of
   *your own* code short (`um kb check` fails blocks over 150 lines and warns over 60).
-- **Nothing that helps cheat in online games:**
-  - no memory offsets or signatures for multiplayer titles;
+- **Leaks:** knowledge from beta builds and leaked SDKs or source is fine to write up in your own words, and
+  so is saying where it came from. The leaked material itself stays out: no pasted code, attached files,
+  download links or license keys, and no instructions to fetch them.
+- **DRM-wrapped executables** (Steam stub, Arxan, Denuvo, iOS FairPlay): analysing your own legally installed
+  copy is fine, from the running game's memory or a private dump kept outside any repository, and so is
+  writing up what you learned in your own words. A note never explains how to strip or unpack the protection,
+  never links an unpacked executable or a DRM-removal tool, and never gives steps whose result is the game
+  running without its DRM.
+- **Console custom firmware** (Luma3DS, Atmosphère and the like): modding your own console through it is
+  fine, with games you bought, cartridges and discs you dumped yourself, or software that came with the
+  console. For installing the firmware, link the community's guide (3ds.hacks.guide for the 3DS) instead of
+  repeating its steps. A note never includes console keys, title keys, seeds, tickets or firmware files,
+  never links download sites for game files or installers (CIA, NSP, NSZ) or shop clients that install
+  them (freeShop, Tinfoil), and keeps a modded console off the official online services. Signature patches
+  are there so your own mods load; using them for games you didn't buy is the ownership bypass ruled out
+  below.
+- **No cheating other players, and no bypasses:**
+  - nothing that gives an edge over other players on servers you don't run (aimbots, ESP, speed hacks,
+    bots);
   - no anti-cheat, DRM or ownership-check bypasses;
-  - no instructions for injecting into protected online clients.
-
-  Single-player and offline only.
+  - no instructions for injecting into online clients protected by anti-cheat;
+  - one exception, for games that can no longer be bought anywhere: a note may say that a community route for
+    people without a copy exists and link the community's guide page. Its steps, keys, serials and files
+    stay out of the repo, and so do direct links to patched executables, cracks or game downloads.
 - **No secrets:** API keys, tokens, `.env` files. `um kb check` and `um publish check` catch the common
   ones.
 - **Honesty:**
@@ -52,6 +75,9 @@ You just modded (or tried to mod) a game, and you learned things. Share them:
   - `uv run --with pytest pytest -q tests` must pass.
 - **Skills (`skills/`):** the Agent Skills format (`SKILL.md` with `name` + `description`). Keep them
   agent-neutral: say "the agent", not a specific product. Put deep material in `references/`.
+  - Edit `skills/` only. `.agents/skills` and `.claude/skills` are copies (no symlinks, so Windows clones
+    work). Refresh them with `rm -rf .agents/skills .claude/skills && cp -r skills .agents/skills && cp -r
+    skills .claude/skills`; a test fails while they differ.
 - **Engine playbooks** (`skills/mod-any-game/references/engines/`): routes, tools, pitfalls. Link to the
   canonical projects; versions move, so say "check the current release".
 - **Examples (`examples/`):** your own code and assets only. Use `fetch` scripts for third-party SDKs, and

@@ -19,31 +19,39 @@ repo, they almost always want to **mod a game**, or to learn how a game was modd
 
 ## Tools
 - **`bin/um`** is the Python CLI, and it sets itself up with `uv`.
-  - Put it on PATH: `export PATH="$PWD/bin:$PATH"`, or install it anywhere with
+  - Put it on PATH: `export PATH="$PWD/bin:$PATH"` (from Windows cmd or PowerShell, add `bin` to PATH and
+    `bin\um.cmd` runs it), or install it anywhere with
     `uv tool install git+https://github.com/micrus24/universal-modder`.
   - Every group has `--help`:
     - `scan`: installed games, engine, anti-cheat, loaders, saves, routes
     - `fal`: sprites, textures, PBR, 3D, rigs, SFX, music, voice, video via fal's REST API
     - `comfy`: the same recipes on a local ComfyUI (no API key; `um comfy check` says what's missing)
-    - `sprite` / `render3d`: art → engine-ready frames
+    - `sprixen`: 2D sprites, animation sheets and tiles via Sprixen's paid API (`SPRIXEN_API_KEY`)
+    - `voidless`: 2D sprites, 8-way turns and animation sets via Voidless's paid API (`VOIDLESS_API_KEY`)
+    - `sprite` / `render3d`: art → engine-ready frames (`render3d` needs Blender on PATH or `BLENDER=...`)
     - `rig`: auto-rig a humanoid GLB with Blender's Rigify (skin weights, idle/walk loops, preview render)
     - `win`: launch, screenshot, input, record on Windows (also from WSL)
     - `video`: contact sheets and EDL showcase edits
     - `backup`: snapshot and restore saves
     - `publish`: pre-release lint
     - `kb`: the knowledge base
-- **fal MCP server:** not configured in this fork. `um fal` does the same over REST (needs `FAL_KEY`); neither is
-  needed with `um comfy`. To add fal's hosted MCP by hand, see `skills/fal-assets/SKILL.md`.
-- **Skills** (`skills/*/SKILL.md`, Agent Skills format) are also linked where each agent looks for them:
-  `.agents/skills` (Codex and others), `.claude/skills`, `.gemini/skills`, `.github/skills`.
+    - `fastfile` / `iwi` / `weapon`: Call of Duty 4 and World at War: rawfiles out of your own `.ff` zones,
+      PNG ↔ IWI textures, weapon-file edits
+- **fal MCP server:** not configured in this fork. `um fal` does the same over REST and finds the key that
+  `um fal key set` stored; neither is needed with `um comfy`. To add fal's hosted MCP by hand, see
+  `skills/fal-assets/SKILL.md`.
+- **Skills** (`skills/*/SKILL.md`, Agent Skills format) are copied where agents look for them in a clone:
+  `.agents/skills` (Codex, Gemini CLI, Copilot, Cursor, OpenCode) and `.claude/skills` (Claude Code). Edit
+  `skills/`, then copy it over; a test fails while the copies differ.
 - **Engine playbooks:** `skills/mod-any-game/references/engines/`.
 - **Worked examples:** `examples/terraria-tmodloader`, `examples/aoe2-de-civ`,
-  `examples/minecraft-gta5-passthrough`.
+  `examples/minecraft-gta5-passthrough`, `examples/outer-wilds-portal-gun`, `examples/mindustry-homing`,
+  `examples/cities-skylines-city-dashboard`.
 
 ## Rules (full reasoning in `skills/mod-any-game/references/safety.md`)
-- **What you can mod:** only games the user owns, single-player/offline.
+- **What you can mod:** any game the user owns: single-player, multiplayer, or servers the user hosts.
   - Never touch online clients protected by anti-cheat.
-  - Never write multiplayer cheats.
+  - Never write cheats against other players (aimbots, ESP, speed hacks).
   - Never bypass anti-cheat, DRM or ownership checks.
 - **Saves:** `um backup` saves before modded launches.
 - **What you ship:** never commit or publish game files, extracted assets or decompiled code. Keep

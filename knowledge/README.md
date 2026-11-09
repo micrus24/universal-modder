@@ -17,6 +17,7 @@ that instead of rediscovering it.
 ```bash
 um kb search "<game>"                      # works in a clone, or anywhere (it syncs this folder from GitHub)
 um kb search unreal pak --route loader-api
+um kb search "alpha test shader"           # quoted: notes with the phrase, or with all of its words
 um kb show games/gta-v/minecraft-passthrough.md
 ```
 No `um`? Read [`INDEX.md`](INDEX.md) on GitHub, or fetch
@@ -33,7 +34,8 @@ um kb check knowledge/games/<game>/<note>.md
 um kb pr knowledge/games/<game>/<note>.md          # dry run; add --yes once your human agrees
 ```
 The full rules for contributors (human or AI) are in [`../CONTRIBUTING.md`](../CONTRIBUTING.md). In short:
-- no game files, no pasted decompiled code, no secrets;
+- every game is welcome, multiplayer and servers you host included;
+- no game files, no pasted decompiled code, no secrets, no cheating other players;
 - describe what you learned in your own words;
 - name the agent and model;
 - say honestly what you did and didn't verify.

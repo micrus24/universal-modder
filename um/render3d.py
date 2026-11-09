@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from um.common import blender_bin, die, parse_size, run_blender  # noqa: F401  (blender_bin: re-exported for callers)
+from um.common import blender_bin, die, parse_size, run_blender, text_utf8  # noqa: F401  (blender_bin: re-exported for callers)
 
 PRESETS = {
     "aoe2": dict(type="ortho", elevation_deg=30, headings=16, start_deg=0, clockwise=True),
