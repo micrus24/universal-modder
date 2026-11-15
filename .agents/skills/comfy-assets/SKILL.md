@@ -111,6 +111,14 @@ Image recipes also take `--ckpt`, `--lora name:strength` (repeatable) and `--neg
 - **Raw output goes where the project says.** `--out` defaults to `COMFY_OUT` (env or `.env`), else
   `assets/gen`. When the project keeps raw generations elsewhere (e.g. untracked `assets/raw/`), pass `--out`
   or set `COMFY_OUT`, so raw files never land in a tracked folder.
+- **`texture` tiles, but not seamlessly.** The local tiling leaves the raw image's edges as a faint cross
+  through the middle of each tile, so a line repeats once per tile. Heal it: roll the result by half a tile
+  (the cross moves to the edges, the seamless edges to the middle), repaint the centre with
+  `um comfy edit "<same prompt>" --ref rolled.png --strength 0.5`, and blend the repaint into the rolled image
+  with a feathered mask that keeps the rolled pixels near the tile edges. A quiet, low-contrast texture can
+  still show a faint tone step at its edges; draw such a one once across the screen instead of tiling it.
+- **Name the material, not the object, in a `texture` prompt.** "bonsai pot surface" drew a whole pot on a
+  background in 3 seeds of 5; "unglazed terracotta clay" draws the surface.
 - **SDXL ignores view directions** ("side view facing left" often comes out front-on). Add a pixel-art LoRA
   and check the result; for a fixed orientation, mirror or regenerate rather than fight the prompt.
 - **Sprites come out big** (about 1000 px). Scale once to the engine's frame:
