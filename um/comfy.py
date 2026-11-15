@@ -1196,7 +1196,7 @@ def _running_url() -> str | None:
 def _infer_cwd(cmdline: str, exe: str, exists=os.path.exists) -> str:
     """The folder a relative `main.py` resolves from: the nearest ancestor of the interpreter that holds it."""
     m = re.search(r'"?([^"\s]*main\.py)"?', cmdline)
-    script = m.group(1) if m else ""
+    script = m.group(1).replace("\\", "/") if m else ""  # a Windows command line, also parsed on other OSes in tests
     if script and not os.path.isabs(script):
         for d in Path(exe).parents:
             if exists(str(d / script)):
