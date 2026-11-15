@@ -507,3 +507,45 @@ def test_publish_credit_matching(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "F5TTSEngineNode" in out and "sd_xl_base" not in out and "ChatterBoxEngineNode" not in out and "wan2.2" not in out
     assert "line 1 is not valid JSON" in out and "line 3 is not valid JSON" in out
+
+
+def test_infer_cwd_finds_the_folder_a_relative_main_py_lives_in():
+    root = Path("E:/Comfy/Installs/x")
+    exe = root / "ComfyUI/.venv/Scripts/python.exe"
+    line = rf'{exe} -s ComfyUI\main.py --enable-manager --output-directory "E:/out"'
+    assert comfy._infer_cwd(line, str(exe), exists=lambda p: Path(p) == root / "ComfyUI/main.py") == str(root)
+    assert comfy._infer_cwd('python "C:/src/ComfyUI/main.py"', "C:/py/python.exe", exists=lambda p: False) == str(Path("C:/src/ComfyUI"))
+
+
+FAKE_SERVER = """import json, sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class H(BaseHTTPRequestHandler):
+    def do_GET(self):
+        b = json.dumps({"system": {}}).encode()
+        self.send_response(200); self.end_headers(); self.wfile.write(b)
+    def log_message(self, *a): pass
+HTTPServer(("127.0.0.1", int(sys.argv[sys.argv.index("--port") + 1])), H).serve_forever()
+"""
+
+
+def test_start_runs_the_command_and_stop_ends_only_its_own_server(tmp_path, monkeypatch, capsys):
+    import socket
+    monkeypatch.setenv("UM_HOME", str(tmp_path / "home"))
+    script = tmp_path / "fake_main.py"
+    script.write_text(FAKE_SERVER)
+    monkeypatch.setenv("COMFY_START", f'"{sys.executable}" "{script}"')
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    um("comfy", "stop")
+    assert "nothing stopped" in capsys.readouterr().out
+    um("comfy", "start", "--port", port, "--wait", 30)
+    assert comfy._up(f"http://127.0.0.1:{port}") and "started at" in capsys.readouterr().out
+    um("comfy", "start", "--port", port)
+    assert "already running" in capsys.readouterr().out
+    um("comfy", "stop")
+    for _ in range(20):
+        if not comfy._up(f"http://127.0.0.1:{port}"):
+            break
+        __import__("time").sleep(0.25)
+    assert not comfy._up(f"http://127.0.0.1:{port}")

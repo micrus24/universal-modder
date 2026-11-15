@@ -2,6 +2,8 @@
 Talks to ComfyUI's HTTP API. The server is found at COMFY_URL (env or .env), else http://127.0.0.1:8188
 (ComfyUI from source / portable), else http://127.0.0.1:8000 (ComfyUI Desktop). --url overrides.
 
+    um comfy start                            # start it headless if it isn't running (`--remember` once while it runs)
+    um comfy stop                             # stop the one `um comfy start` started
     um comfy check                            # is ComfyUI up, which recipes can run, what's missing
     um comfy models                           # model files ComfyUI can see, per folder
     um comfy image "key art: ..." --aspect 16:9
@@ -1175,6 +1177,112 @@ def cmd_logs(a):
     print(server_log(a.lines))
 
 
+# --------------------------------------------------------------------------- start / stop
+
+def _up(url: str) -> bool:
+    try:
+        with urllib.request.urlopen(url.rstrip("/") + "/system_stats", timeout=3) as r:
+            json.loads(r.read())
+        return True
+    except Exception:
+        return False
+
+
+def _running_url() -> str | None:
+    explicit = os.environ.get("COMFY_URL") or dotenv_value("COMFY_URL")
+    return next((u.rstrip("/") for u in ([explicit] if explicit else DEFAULT_URLS) if _up(u)), None)
+
+
+def _infer_cwd(cmdline: str, exe: str, exists=os.path.exists) -> str:
+    """The folder a relative `main.py` resolves from: the nearest ancestor of the interpreter that holds it."""
+    m = re.search(r'"?([^"\s]*main\.py)"?', cmdline)
+    script = m.group(1) if m else ""
+    if script and not os.path.isabs(script):
+        for d in Path(exe).parents:
+            if exists(str(d / script)):
+                return str(d)
+    return str(Path(script).parent) if script else str(Path(exe).parent)
+
+
+def _listener(url: str) -> dict:
+    """Command line and working folder of the process serving `url`."""
+    port = urllib.parse.urlparse(url).port
+    if sys.platform == "win32":
+        ps = (f"$p=(Get-NetTCPConnection -State Listen -LocalPort {port} | Select-Object -First 1).OwningProcess; "
+              "$w=Get-CimInstance Win32_Process -Filter \"ProcessId=$p\"; $w.ExecutablePath; $w.CommandLine")
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True).stdout.splitlines()
+        if len(out) < 2:
+            die(f"no process found listening on port {port}")
+        exe, cmdline = out[0].strip(), out[1].strip()
+        return dict(cmd=cmdline, cwd=_infer_cwd(cmdline, exe))
+    pid = subprocess.run(["sh", "-c", f"lsof -t -iTCP:{port} -sTCP:LISTEN | head -1"], capture_output=True, text=True).stdout.strip()
+    if not pid or not Path(f"/proc/{pid}/cmdline").exists():
+        die("can't read the server's command line here; set COMFY_START instead")
+    argv = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+    return dict(cmd=subprocess.list2cmdline([x.decode() for x in argv if x]), cwd=os.readlink(f"/proc/{pid}/cwd"))
+
+
+def _start_spec() -> dict | None:
+    line = os.environ.get("COMFY_START") or dotenv_value("COMFY_START")
+    if line:
+        return dict(cmd=line, cwd=os.getcwd())
+    f = data_dir() / "comfy_start.json"
+    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+
+
+def cmd_start(a):
+    """Start ComfyUI headless (no window) from a remembered command line, so an agent needs no human to open it."""
+    if a.remember:
+        url = _running_url() or die("start ComfyUI once yourself, then run `um comfy start --remember`")
+        spec = _listener(url)
+        (data_dir() / "comfy_start.json").write_text(json.dumps(spec, indent=1), encoding="utf-8")
+        print(f"remembered how to start ComfyUI ({url}):\n  {spec['cmd']}\n  in {spec['cwd']}")
+        return
+    url = f"http://127.0.0.1:{a.port}" if a.port else _running_url()
+    if url and _up(url):
+        print(f"ComfyUI already running at {url}")
+        return
+    spec = _start_spec() or die("don't know how to start ComfyUI: run `um comfy start --remember` once while it runs, "
+                                "or set COMFY_START (env or .env) to its command line")
+    line = spec["cmd"] + (f" --port {a.port}" if a.port else "")
+    log = data_dir() / "comfy-server.log"
+    win = sys.platform == "win32"
+    flags = (subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP) if win else 0
+    with open(log, "wb") as lf:
+        p = subprocess.Popen(line, cwd=spec["cwd"], stdout=lf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                             shell=not win, creationflags=flags, start_new_session=not win)
+    (data_dir() / "comfy-server.pid").write_text(str(p.pid))
+    deadline = time.time() + a.wait
+    while time.time() < deadline:
+        found = (url if _up(url) else None) if a.port else _running_url()
+        if found:
+            print(f"ComfyUI started at {found} (pid {p.pid}, log {log}); `um comfy stop` ends it")
+            return
+        if p.poll() is not None:
+            break
+        time.sleep(2)
+    tail = "\n".join(log.read_text(encoding="utf-8", errors="replace").splitlines()[-20:])
+    die(f"ComfyUI did not come up within {a.wait:.0f} s; the end of its log ({log}):\n{tail}")
+
+
+def cmd_stop(a):
+    """Stop the ComfyUI that `um comfy start` started; a server the user opened is left alone."""
+    f = data_dir() / "comfy-server.pid"
+    if not f.exists():
+        print("no ComfyUI started by `um comfy start`; nothing stopped")
+        return
+    pid = int(f.read_text())
+    if sys.platform == "win32":
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True)
+    else:
+        try:
+            os.killpg(pid, 15)
+        except ProcessLookupError:
+            pass
+    f.unlink()
+    print(f"stopped ComfyUI (pid {pid})")
+
+
 def cmd(a):
     generate(a.recipe, a)
 
@@ -1191,7 +1299,8 @@ def register(sub):
             q.add_argument(pos)
         q.add_argument("--url", help="ComfyUI address (default COMFY_URL, then :8188, then :8000)")
         if out:
-            q.add_argument("--out", default="assets/gen", help="output folder (default assets/gen)")
+            q.add_argument("--out", default=os.environ.get("COMFY_OUT") or dotenv_value("COMFY_OUT") or "assets/gen",
+                           help="output folder (default COMFY_OUT from env or .env, else assets/gen)")
             q.add_argument("--name", help="output file stem")
         if func is cmd:
             q.add_argument("--workflow", help="your API-format workflow with {{placeholders}} instead of the built-in one")
@@ -1263,3 +1372,8 @@ def register(sub):
     recipe("models", "model files ComfyUI sees, per folder", func=cmd_models, out=False)
     q = recipe("logs", "tail of ComfyUI's own log (why did a node fail?)", func=cmd_logs, out=False)
     q.add_argument("--lines", type=int, default=60)
+    q = recipe("start", "start ComfyUI headless unless it runs (an agent needs no human to open it)", func=cmd_start, out=False)
+    q.add_argument("--remember", action="store_true", help="save the running server's command line for later starts")
+    q.add_argument("--port", type=int, help="serve on this port instead of the remembered one")
+    q.add_argument("--wait", type=float, default=300, help="seconds to wait for it to come up")
+    recipe("stop", "stop the ComfyUI that `um comfy start` started", func=cmd_stop, out=False)

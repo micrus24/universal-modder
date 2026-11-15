@@ -17,7 +17,12 @@ description: Generate game assets locally with ComfyUI through `um comfy`, with 
    - else `http://127.0.0.1:8188` (from source or portable);
    - else `:8000` (ComfyUI Desktop).
 
-   If it's not running, ask the user to start it. Don't install it into their system without asking.
+   If it's not running, run `um comfy start`: it starts ComfyUI headless (no window) from the command line
+   it remembered and waits until it answers; `um comfy stop` ends only a server it started. It needs
+   `um comfy start --remember` run once while the user's ComfyUI is up (or `COMFY_START` set to the command
+   line). Only when neither exists, ask the user to start it. Don't install it into their system without asking.
+   A second ComfyUI beside the user's open Desktop fails on the shared asset database; start one only when
+   none answers.
 2. **Run `um comfy check`.** It prints the GPU and VRAM, then one line per recipe:
    - `ok`, with the model files it will use;
    - or `missing`, with what to download or which node pack to install, and where to put it.
@@ -95,6 +100,17 @@ Image recipes also take `--ckpt`, `--lora name:strength` (repeatable) and `--neg
   `LoadImage` keeps junk colour under alpha 0.
 
 ## Things that surprise people
+- **Base SDXL drifts to photographs.** A prompt with no style words, or with "studio photograph", gives a
+  photoreal 1024 px image, whatever the game looks like. Put the game's own art direction in every prompt
+  (e.g. "flat vector illustration, solid colours, no gradients, plain background") and the photo words in
+  `--negative`.
+- **Base SDXL doesn't know niche style names** (bonsai styles such as chokkan or fukinagashi, a game's own
+  terms): the name is ignored. For a specific shape, draw a guide silhouette (PIL or by hand) and run
+  `um comfy edit "<style words>" --ref guide.png --strength 0.7`; the silhouette carries the shape, the prompt
+  the look. Use the same route for every image of one set so the set stays consistent.
+- **Raw output goes where the project says.** `--out` defaults to `COMFY_OUT` (env or `.env`), else
+  `assets/gen`. When the project keeps raw generations elsewhere (e.g. untracked `assets/raw/`), pass `--out`
+  or set `COMFY_OUT`, so raw files never land in a tracked folder.
 - **SDXL ignores view directions** ("side view facing left" often comes out front-on). Add a pixel-art LoRA
   and check the result; for a fixed orientation, mirror or regenerate rather than fight the prompt.
 - **Sprites come out big** (about 1000 px). Scale once to the engine's frame:
