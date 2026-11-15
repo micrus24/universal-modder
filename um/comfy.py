@@ -55,7 +55,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-from um.common import asset_name as _name, data_dir, die, dotenv_value, need, parse_kv as _kv, parse_size, text_utf8
+from um.common import asset_name as _name, data_dir, die, dotenv_value, need, parse_kv as _kv, parse_size, text_utf8, PS_UTF8
 from um.fal import SPRITE_STYLE
 
 DEFAULT_URLS = ("http://127.0.0.1:8188", "http://127.0.0.1:8000")
@@ -1210,12 +1210,12 @@ def _listener(url: str) -> dict:
     if sys.platform == "win32":
         ps = (f"$p=(Get-NetTCPConnection -State Listen -LocalPort {port} | Select-Object -First 1).OwningProcess; "
               "$w=Get-CimInstance Win32_Process -Filter \"ProcessId=$p\"; $w.ExecutablePath; $w.CommandLine")
-        out = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True).stdout.splitlines()
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", PS_UTF8 + ps], capture_output=True, **text_utf8()).stdout.splitlines()
         if len(out) < 2:
             die(f"no process found listening on port {port}")
         exe, cmdline = out[0].strip(), out[1].strip()
         return dict(cmd=cmdline, cwd=_infer_cwd(cmdline, exe))
-    pid = subprocess.run(["sh", "-c", f"lsof -t -iTCP:{port} -sTCP:LISTEN | head -1"], capture_output=True, text=True).stdout.strip()
+    pid = subprocess.run(["sh", "-c", f"lsof -t -iTCP:{port} -sTCP:LISTEN | head -1"], capture_output=True, **text_utf8()).stdout.strip()
     if not pid or not Path(f"/proc/{pid}/cmdline").exists():
         die("can't read the server's command line here; set COMFY_START instead")
     argv = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
